@@ -1,0 +1,66 @@
+# ========================
+# DawaiSathi — .gitignore
+# ========================
+
+# Environment / Secrets (NEVER commit these)
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# API keys & OAuth files (sensitive)
+gemini_api_key.md
+oauth_id.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+.env/
+
+# SQLite database
+instance/
+*.db
+backend/instance/
+
+# Uploads (user data — don't commit)
+backend/uploads/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+*.tgz
+
+# Vite / Build artifacts
+.vite/
+dist-ssr/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.user
+.project
+.classpath
+
+# Presentation PDFs (large files)
+*.pdf

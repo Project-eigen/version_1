@@ -1,0 +1,168 @@
+import React, { useRef, useState, useCallback, useEffect } from 'react'
+import Webcam from 'react-webcam'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import Header from '../components/Header'
+import api from '../api/client'
+import { Zap, ZapOff, Camera, X } from 'lucide-react'
+
+export default function Scanner() {
+  const webcamRef = useRef<Webcam>(null)
+  const navigate = useNavigate()
+  const { activeMemberId } = useAuth()
+  const [capturing, setCapturing] = useState(false)
+  const [cameraError, setCameraError] = useState(false)
+  const [inboxCount, setInboxCount] = useState(0)
+  const [flashActive, setFlashActive] = useState(false)
+
+  const toggleFlash = async () => {
+    try {
+      const stream = webcamRef.current?.video?.srcObject as MediaStream | null
+      if (!stream) return
+      const track = stream.getVideoTracks()[0]
+      const capabilities = track.getCapabilities() as any
+      if (capabilities && 'torch' in capabilities) {
+        const newFlashState = !flashActive
+        await track.applyConstraints({ advanced: [{ torch: newFlashState }] } as any)
+        setFlashActive(newFlashState)
+      } else {
+        alert('Flash/Torch is not supported on this device/camera.')
+      }
+    } catch (err) {
+      console.error('Failed to toggle flash', err)
+    }
+  }
+
+  useEffect(() => {
+    const fetchInbox = async () => {
+      try {
+        const res = await api.get('/family/inbox')
+        setInboxCount(res.data.requests?.length ?? 0)
+      } catch {}
+    }
+    fetchInbox()
+  }, [])
+
+  const handleCapture = useCallback(async () => {
+    if (capturing) return
+    const imageSrc = webcamRef.current?.getScreenshot()
+    if (!imageSrc) return
+
+    setCapturing(true)
+    try {
+      const res = await fetch(imageSrc)
+      const blob = await res.blob()
+      const file = new File([blob], 'scan.jpg', { type: 'image/jpeg' })
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const scanRes = await api.post('/medicine/scan', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+
+      navigate('/scan/approve', {
+        state: {
+          scanData: scanRes.data,
+          capturedImage: imageSrc,
+          targetMemberId: activeMemberId,
+        },
+      })
+    } catch (err) {
+      console.error('Scan failed', err)
+      setCapturing(false)
+    }
+  }, [capturing, navigate, activeMemberId])
+
+  return (
+    <div className="scanner-fullpage">
+      {/* Dark header row */}
+      <div className="scanner-top-bar">
+        <div className="scanner-brand">
+          <div className="scanner-brand-dot" />
+          <span>DawaiSathi Scanner</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className={`flash-toggle-btn ${flashActive ? 'active' : ''}`}
+            onClick={toggleFlash}
+            type="button"
+            aria-label="Toggle Flash"
+            id="toggle-flash-btn"
+          >
+            {flashActive ? <Zap size={18} color="var(--accent-teal)" /> : <ZapOff size={18} color="rgba(255,255,255,0.6)" />}
+          </button>
+          <button
+            className="scanner-close-btn"
+            onClick={() => navigate('/cabinet')}
+            type="button"
+            aria-label="Close scanner"
+          >
+            <X size={18} color="rgba(255,255,255,0.6)" />
+          </button>
+        </div>
+      </div>
+
+      {/* Full-screen camera view */}
+      <div className="scanner-camera-area">
+        {cameraError ? (
+          <div className="scanner-error-state">
+            <ZapOff size={52} opacity={0.4} color="white" />
+            <p className="scanner-error-title">Camera Unavailable</p>
+            <p className="scanner-error-desc">Allow camera access in browser settings and refresh.</p>
+          </div>
+        ) : (
+          <>
+            <Webcam
+              ref={webcamRef}
+              screenshotFormat="image/jpeg"
+              screenshotQuality={1.0}
+              videoConstraints={{
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+              }}
+              onUserMediaError={() => setCameraError(true)}
+              className="scanner-video-feed"
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+
+            {/* Viewfinder overlay */}
+            <div className="scanner-viewfinder">
+              <div className="scanner-scan-line" />
+              <div className="scanner-corner tl" />
+              <div className="scanner-corner tr" />
+              <div className="scanner-corner bl" />
+              <div className="scanner-corner br" />
+            </div>
+
+            {/* Hint label */}
+            <div className="scanner-hint">
+              {capturing ? 'Analyzing with AI…' : 'Place prescription inside frame'}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Capture button pinned above bottom */}
+      <div className="scanner-capture-dock">
+        {capturing ? (
+          <div className="scanner-analyzing">
+            <div className="loading-spinner" style={{ borderTopColor: 'var(--accent-teal)', width: 28, height: 28 }} />
+            <span>Analyzing prescription…</span>
+          </div>
+        ) : (
+          <button
+            className="capture-btn"
+            onClick={handleCapture}
+            disabled={cameraError}
+            id="capture-btn"
+            aria-label="Capture medicine image"
+            type="button"
+          >
+            <Camera size={28} color="#0f172a" strokeWidth={2} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
