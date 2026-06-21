@@ -133,34 +133,21 @@ export default function Cabinet() {
   const [isFetching, setIsFetching] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [activeLightboxImage, setActiveLightboxImage] = useState<string | null>(null)
+  const hasFetchedOnce = useRef(false)
 
   const showToast = (msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
   }
 
-  const fetchMembers = useCallback(async () => {
-    try {
-      const res = await api.get('/family/members')
-      setMembers(res.data.members || [])
-    } catch {}
-  }, [])
-
-  const fetchInbox = useCallback(async () => {
-    try {
-      const res = await api.get('/family/inbox')
-      setInboxCount(res.data.requests?.length ?? 0)
-    } catch {}
-  }, [])
-
-  const fetchCabinet = useCallback(async (userId: number) => {
-    // Only show full blocking loading screen if we have no medicines shown yet
-    if (medicines.length === 0) {
-      setLoading(true)
-    } else {
-      setIsFetching(true)
+  const fetchCabinet = useCallback(async (userId: number, isBackground = false) => {
+    if (!isBackground) {
+      if (!hasFetchedOnce.current) {
+        setLoading(true)
+      } else {
+        setIsFetching(true)
+      }
     }
-
     try {
       const tzOffset = new Date().getTimezoneOffset()
       const localDate = new Date().toLocaleDateString('sv-SE')
@@ -168,17 +155,25 @@ export default function Cabinet() {
         `/medicine/cabinet?user_id=${userId}&tz_offset=${tzOffset}&local_date=${localDate}`
       )
       setMedicines(res.data.medicines || [])
+      hasFetchedOnce.current = true
     } catch {} finally {
       setLoading(false)
       setIsFetching(false)
     }
-  }, [medicines.length])
+  }, [])
 
+  // On mount: fetch everything in parallel for speed
   useEffect(() => {
-    if (user?.id) {
-      fetchMembers()
-      fetchInbox()
+    if (!user?.id) return
+    const init = async () => {
+      const [membersRes, inboxRes] = await Promise.allSettled([
+        api.get('/family/members'),
+        api.get('/family/inbox'),
+      ])
+      if (membersRes.status === 'fulfilled') setMembers(membersRes.value.data.members || [])
+      if (inboxRes.status === 'fulfilled') setInboxCount(inboxRes.value.data.requests?.length ?? 0)
     }
+    init()
   }, [user])
 
   useEffect(() => {
@@ -231,9 +226,16 @@ export default function Cabinet() {
         inboxCount={inboxCount}
       >
         {loading ? (
-          <div className="loading-overlay">
-            <div className="loading-spinner" />
-            <span>Loading cabinet…</span>
+          <div style={{ padding: '12px 12px 0' }}>
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="skeleton-card" style={{ marginBottom: 8 }}>
+                <div className="skeleton-thumb" />
+                <div style={{ flex: 1 }}>
+                  <div className="skeleton-line" style={{ width: '60%', marginBottom: 8 }} />
+                  <div className="skeleton-line" style={{ width: '40%', height: 10 }} />
+                </div>
+              </div>
+            ))}
           </div>
         ) : !hasMedicines ? (
           <div className="empty-state">
